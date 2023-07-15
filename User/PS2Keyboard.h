@@ -197,5 +197,6 @@ extern const PROGMEM PS2Keymap_t PS2Keymap_Japanese;
 void kbd_init( void);
 bool kbd_available();
 int kbd_read();
+uint8_t get_scan_code(void);
 
 #endif

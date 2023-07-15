@@ -106,7 +106,8 @@ void EXTI9_5_IRQHandler(void)
     }
 }
 
-static inline uint8_t get_scan_code(void)
+//static inline uint8_t get_scan_code(void)
+uint8_t get_scan_code(void)
 {
   uint8_t c, i;
 

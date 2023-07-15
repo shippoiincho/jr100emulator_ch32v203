@@ -8,14 +8,14 @@
  TIM1CH3:  (NC)  Video out timing interrupt
  SPI1MOSI: (PA7) Video signal
 
- PC4 -- R1 --+
- PC6 -- R2 --+---> Video
+ PA11 -- R1 --+
+ PA7 -- R2 --+---> Video
 
  R1: 560 ohm
  R2: 240 ohm
 
  TIM4CH4: (PB9)  Sound
- Key input: USART2_RX £¨PA3£©
+ Key input: USART2_RX £¨PA3£© or PS/2 PA8(Clock)/PA9(DATA)
 
  */
 
@@ -24,8 +24,6 @@
 #include "jr100guldus.h"
 #include "cpuintrf.h"
 #include "m6800.h"
-#include "ch32v20x_usb.h"
-#include "usb_host_config.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
@@ -583,11 +581,6 @@ void TIM1_CC_IRQHandler(void) {
     TIM_ClearFlag(TIM1, TIM_FLAG_CC3);
     uint8_t char_x, char_y, slice_y, ch;
     uint8_t clocks, clocks2;
-#ifdef USE_USB_KEYBOARD
-    uint8_t index;
-    uint8_t hub_port;
-    uint8_t intf_num, in_num;
-#endif
 
     //  uint8_t render_line;
 
@@ -665,50 +658,54 @@ void TIM1_CC_IRQHandler(void) {
         }
     }
 
-#ifdef USE_USB_KEYBOARD
+}
 
-        /* USB HID Device Input Endpoint Timing */
-        if( RootHubDev.bStatus >= ROOT_DEV_SUCCESS )
-        {
-            index = RootHubDev.DeviceIndex;
-            if( RootHubDev.bType == USB_DEV_CLASS_HID )
-            {
-                for( intf_num = 0; intf_num < HostCtl[ index ].InterfaceNum; intf_num++ )
-                {
-                    for( in_num = 0; in_num < HostCtl[ index ].Interface[ intf_num ].InEndpNum; in_num++ )
-                    {
-                        HostCtl[ index ].Interface[ intf_num ].InEndpTimeCount[ in_num ]++;
-                    }
-                }
-            }
-            else if( RootHubDev.bType == USB_DEV_CLASS_HUB )
-            {
-                HostCtl[ index ].Interface[ 0 ].InEndpTimeCount[ 0 ]++;
-                for( hub_port = 0; hub_port < RootHubDev.bPortNum; hub_port++ )
-                {
-                    if( RootHubDev.Device[ hub_port ].bStatus >= ROOT_DEV_SUCCESS )
-                    {
-                        index = RootHubDev.Device[ hub_port ].DeviceIndex;
+#ifdef USE_PS2_KEYBOARD
 
-                        if( RootHubDev.Device[ hub_port ].bType == USB_DEV_CLASS_HID )
-                        {
-                            for( intf_num = 0; intf_num < HostCtl[ index ].InterfaceNum; intf_num++ )
-                            {
-                                for( in_num = 0; in_num < HostCtl[ index ].Interface[ intf_num ].InEndpNum; in_num++ )
-                                {
-                                    HostCtl[ index ].Interface[ intf_num ].InEndpTimeCount[ in_num ]++;
-                                }
-                            }
-                        }
-                    }
+void ps2_getkey() {
+    uint8_t ps2_keycode,col,row;
+    static uint8_t ps2_extra=0;
+    static uint8_t ps2_depressed=0;
+
+    ps2_keycode=get_scan_code();
+
+ // if(ps2_keycode!=0) printf("%x ",ps2_keycode);
+
+    if(ps2_keycode==0xe0) {
+        ps2_extra=1;
+    } else if (ps2_keycode==0xf0) {
+        ps2_depressed=1;
+    } else if (ps2_keycode!=0 ){
+        if(ps2_extra==0) {        // skip extra modifier keys (eg. Right Shift)
+            col=ps2_keymap[ps2_keycode*2];
+            row=ps2_keymap[ps2_keycode*2+1];
+            if(row!=0) {
+                if(ps2_depressed==0) {
+                    keymatrix[col] &= ~row;
+                } else {
+                    keymatrix[col] |= row;
                 }
+            } else if(ps2_keycode=0x11) {
+                // ALT: reset keymatrix
+                for(int i=0;i<9;i++) {
+                    keymatrix[i]=0xff;
+                }
+            } else if((ps2_keycode==0x07)&&(ps2_depressed==0)) {
+                // F12: load test game to memory
+                memcpy(RAM + 0x1000, jr100guldus, 0x1600);
             }
+
         }
+        ps2_depressed=0;
+        ps2_extra=0;
+    }
+
+}
 
 #endif
 
 
-}
+
 
 /*********************************************************************
  * @fn      main
@@ -719,6 +716,10 @@ void TIM1_CC_IRQHandler(void) {
  */
 int main(void) {
 
+    // run Systick timer
+
+    SysTick->CNT = 0;
+    SysTick->CTLR |=(1 << 0);
 
 
 //  Peripheral setup
@@ -731,13 +732,10 @@ int main(void) {
     video_init();
     video_cls();
 
-#ifdef USE_USB_KEYBOARD
-    USBFS_RCC_Init();
-    USBFS_Host_Init(ENABLE);
-    memset(&RootHubDev.bStatus, 0, sizeof(ROOT_HUB_DEVICE));
-    memset(
-            &HostCtl[ DEF_USBFS_PORT_INDEX * DEF_ONE_USB_SUP_DEV_TOTAL].InterfaceNum,
-            0, DEF_ONE_USB_SUP_DEV_TOTAL * sizeof(HOST_CTL));
+#ifdef USE_PS2_KEYBOARD
+
+    kbd_init();
+
 #endif
 
 //  Emulator setup
@@ -747,19 +745,21 @@ int main(void) {
         RAM[i] = 0;
     }   // zeroes execute as NOP (as do all undefined instructions)
 
+    for(int i=0;i<9;i++) {
+        keymatrix[i]=0xff;
+    }
+
     m6800_init();
     m6800_reset();
 
     Delay_Init();
 
-
- //    for (int xx = 0; xx < NTSC_X_CHARS; xx++) {
- //    cpu_writemem16(xx, 0xaa);
- //    if (cpu_readmem16(xx) != 0xaa)
- //    vram[xx + 0x100] = 0x20;
- //    Delay_Ms(10);
- //    }
-
+//     for (int xx = 0; xx < NTSC_X_CHARS; xx++) {
+//     cpu_writemem16(xx, 0xaa);
+//     if (cpu_readmem16(xx) != 0xaa)
+//     vram[xx + 0x100] = 0x20;
+//     Delay_Ms(10);
+//     }
 
     run_emulation = 1;
 
@@ -767,13 +767,12 @@ int main(void) {
     {
 
         video_wait_vsync();
+#ifdef USE_PS2_KEYBOARD
+        ps2_getkey();
+#else
         USART_Getkey();
-
-#ifdef USE_USB_KEYBOARD
-
-  USBH_MainDeal();
-
 #endif
+
 
 
     }
