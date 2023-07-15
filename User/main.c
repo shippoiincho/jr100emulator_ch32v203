@@ -46,8 +46,9 @@
 #define NTSC_X_CHARS (NTSC_X_PIXELS/8)
 #define NTSC_Y_CHARS (NTSC_Y_PIXELS/8)
 
-//#define USE_USB_KEYBOARD      // it dosen't work.
 #define USE_PS2_KEYBOARD
+
+#define RX_BUFFER_LEN 64
 
 /* Global Variable */
 
@@ -59,6 +60,14 @@ uint8_t *vram;
 uint8_t *scandata[2];
 uint8_t keymatrix[9];
 uint8_t via_reg[16];
+volatile uint8_t cmt_buff;
+volatile uint8_t cmt_bit=0;
+
+uint64_t last_usart_tx_systick=0;
+
+volatile uint8_t rxbuff[RX_BUFFER_LEN];
+uint8_t rxptr = 0;
+uint32_t lastptr = RX_BUFFER_LEN;
 
 // 700 bytes left
 //16KB
@@ -362,7 +371,11 @@ void exec6522(uint16_t cycles) {
         timer1_count = 0;
         //         } else {                 // Continuous
         timer1_control = via_reg[6] + (via_reg[7] << 8);
+        if(timer1_control>cycles) {
         timer1_count = timer1_control - timer1_count - cycles;
+        } else {
+            timer1_count=0;
+        }
         //         }
 
         if ((via_reg[0xb] & 0x80) != 0) {  // check to toggle PB7
@@ -392,6 +405,28 @@ void exec6522(uint16_t cycles) {
 
     via_reg[4] = timer1_count & 0xff;
     via_reg[5] = (timer1_count >> 8) & 0xff;
+
+
+    // Run timer2
+
+    if ((via_reg[0xb] & 0xc0) == 0) {
+
+        // run timer 2 (independent mode)
+
+        timer2_count = via_reg[8] + (via_reg[9] << 8);
+
+        if (timer2_count > cycles) {
+            timer2_count-=cycles;
+        } else {
+            timer2_count=0;
+                via_reg[0xd] |= 0x20;     // set T2IL
+        }
+        via_reg[8] = timer2_count & 0xff;
+        via_reg[9] = (timer2_count >> 8) & 0xff;
+    }
+
+    // CMT input
+
 
 }
 
@@ -431,8 +466,25 @@ void cpu_writemem16(unsigned short addr, unsigned char bdat) { // RAM access is 
             via_reg[9] = bdat;
             via_reg[0xd] &= 0xdf; // clear T2IL
             break;
-        case 0xa:
-            via_reg[0xd] |= 0x02; // set SR flag
+        case 0xa:    // CMT output to USART
+ //           printf("%x",bdat);
+            if((SysTick->CNT-last_usart_tx_systick)> SystemCoreClock/100) {
+                cmt_buff=0;
+                cmt_bit=0;
+            }
+            last_usart_tx_systick=SysTick->CNT;
+            cmt_buff<<=1;
+            if(bdat==0xaa) {
+                cmt_buff++;
+            }
+            cmt_bit++;
+            if(cmt_bit==8) {
+                printf("%02x",cmt_buff);
+                cmt_bit=0;
+                cmt_buff=0;
+            }
+
+            via_reg[0xd] |= 0x84; // set SR flag
             break;
         case 0xb:
             if ((bdat & 0xc0) != 0xc0) {
@@ -529,9 +581,69 @@ void USART_CFG(void) {
     USART_InitStructure.USART_Mode = USART_Mode_Tx | USART_Mode_Rx;
 
     USART_Init(USART2, &USART_InitStructure);
+    USART_DMACmd(USART2, USART_DMAReq_Rx, ENABLE);
     USART_Cmd(USART2, ENABLE);
 
 }
+
+void DMA_Rx_Init(DMA_Channel_TypeDef *DMA_CHx, u32 ppadr, u32 memadr,
+        u16 bufsize) {
+    DMA_InitTypeDef DMA_InitStructure = { 0 };
+
+    RCC_AHBPeriphClockCmd( RCC_AHBPeriph_DMA1, ENABLE);
+
+    DMA_DeInit(DMA_CHx);
+
+    DMA_InitStructure.DMA_PeripheralBaseAddr = ppadr;
+    DMA_InitStructure.DMA_MemoryBaseAddr = memadr;
+    DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralSRC;
+    DMA_InitStructure.DMA_BufferSize = bufsize;
+    DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+    DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
+    DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
+    DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
+    DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;
+    DMA_InitStructure.DMA_Priority = DMA_Priority_VeryHigh;
+    DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
+    DMA_Init(DMA_CHx, &DMA_InitStructure);
+
+    DMA_Cmd(DMA_CHx, ENABLE);
+
+}
+
+static inline uint8_t usart_getch() {
+
+    uint8_t ch;
+    uint32_t currptr;
+
+    currptr = DMA_GetCurrDataCounter(DMA1_Channel6);
+
+    if(currptr==lastptr) {
+        return 0;
+    }
+
+    /*
+    while(1) {
+        currptr=DMA_GetCurrDataCounter(DMA1_Channel6);
+        if(currptr!=lastptr) break;
+
+    }
+    */
+
+    ch = rxbuff[rxptr];
+    lastptr--;
+    if (lastptr == 0) {
+        lastptr = RX_BUFFER_LEN;
+    }
+
+    rxptr++;
+    if (rxptr >= RX_BUFFER_LEN)
+        rxptr = 0;
+
+    return ch;
+
+}
+
 
 void USART_Getkey() {
 
@@ -543,8 +655,10 @@ void USART_Getkey() {
             keymatrix[i] = 0xff;
         }
 
-        if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) != RESET) {
-            ch = toupper(USART_ReceiveData(USART2));
+        ch=toupper(usart_getch());
+
+        if(ch!=0) {
+
             if (ch == '|') { // load test game to memory
                 memcpy(RAM + 0x1000, jr100guldus, 0x1600);
             }
@@ -707,9 +821,6 @@ void ps2_getkey() {
 
 #endif
 
-
-
-
 /*********************************************************************
  * @fn      main
  *
@@ -730,6 +841,10 @@ int main(void) {
     NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
 
     USART_CFG();
+
+    DMA_Rx_Init( DMA1_Channel6, (u32) &USART2->DATAR, (u32) &rxbuff,
+    RX_BUFFER_LEN);
+
     beep_init();
 
     video_init();
@@ -744,19 +859,19 @@ int main(void) {
 //  Emulator setup
 
     RAM = malloc(MEM_SIZE);
-    for (int i = 0; i < MEM_SIZE; i++) {
-        RAM[i] = 0;
-    }   // zeroes execute as NOP (as do all undefined instructions)
+    memset(RAM, 0, MEM_SIZE);   // zeroes execute as NOP (as do all undefined instructions)
 
     for(int i=0;i<9;i++) {
         keymatrix[i]=0xff;
     }
 
+    memset(rxbuff, 0, RX_BUFFER_LEN);
+
     m6800_init();
     m6800_reset();
 
-    Delay_Init();
-
+ //   Delay_Init();
+//
 //     for (int xx = 0; xx < NTSC_X_CHARS; xx++) {
 //     cpu_writemem16(xx, 0xaa);
 //     if (cpu_readmem16(xx) != 0xaa)
@@ -776,7 +891,11 @@ int main(void) {
         USART_Getkey();
 #endif
 
-
+        if((cmt_bit!=0)&&(SysTick->CNT-last_usart_tx_systick>SystemCoreClock/100)) {
+            printf("%0x\n\r\n\r",cmt_buff<<(8-cmt_bit));
+            cmt_bit=0;
+            cmt_buff=0;
+        }
 
     }
 }
