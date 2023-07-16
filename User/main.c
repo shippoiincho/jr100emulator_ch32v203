@@ -21,7 +21,7 @@
 
 #include "debug.h"
 #include "jr100rom.h"
-#include "jr100guldus.h"
+//#include "jr100guldus.h"
 #include "cpuintrf.h"
 #include "m6800.h"
 #include <stdlib.h>
@@ -61,9 +61,9 @@ uint8_t *scandata[2];
 uint8_t keymatrix[9];
 uint8_t via_reg[16];
 volatile uint8_t cmt_buff;
-volatile uint8_t cmt_bit=0;
+volatile uint8_t cmt_bit = 0;
 
-uint64_t last_usart_tx_systick=0;
+uint64_t last_usart_tx_systick = 0;
 
 volatile uint8_t rxbuff[RX_BUFFER_LEN];
 uint8_t rxptr = 0;
@@ -107,24 +107,39 @@ const uint8_t keymap[] = { 0xff, 0, 0, 0xff, 0, 0, 0xff, 0, 0, 0xff, 0,
         5, 4, 1, 5, 16, 1, 4, 16, 1, 7, 8, 1 };
 
 // PS/2 Keymap
-const uint8_t ps2_keymap[] = {
-        0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,   //0x00
-        0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,
-        0,0x00,0,0x00,0,0x02,0,0x00,0,0x01,2,0x01,3,0x01,0,0x00,   //0x10
-        0,0x00,0,0x00,0,0x04,1,0x02,1,0x01,2,0x02,3,0x02,0,0x00,
-        0,0x00,0,0x10,0,0x08,1,0x04,2,0x04,3,0x08,3,0x04,0,0x00,   //0x20
-        0,0x00,8,0x02,7,0x01,1,0x08,2,0x10,2,0x08,3,0x10,0,0x00,
-        0,0x00,7,0x04,7,0x02,6,0x01,1,0x10,5,0x01,4,0x01,0,0x00,   //0x30
-        0,0x00,0,0x00,7,0x08,6,0x02,5,0x02,4,0x02,4,0x04,0,0x00,
-        0,0x00,7,0x10,6,0x04,5,0x04,5,0x08,4,0x10,4,0x08,0,0x00,   //0x40
-        0,0x00,8,0x01,0,0x00,6,0x08,6,0x10,5,0x10,8,0x10,0,0x00,
-        0,0x00,0,0x00,8,0x04,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,   //0x50
-        0,0x00,0,0x00,8,0x08,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,
-        0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,   //0x60
-        0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,
-        0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,   //0x70
-        0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,0,0x00,
-};
+const uint8_t ps2_keymap[] =
+        { 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0,
+                0x00,   //0x00
+                0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00,
+                0, 0x00, 0, 0x00, 0, 0x00, 0, 0x02, 0, 0x00, 0, 0x01, 2, 0x01,
+                3, 0x01, 0,
+                0x00,   //0x10
+                0, 0x00, 0, 0x00, 0, 0x04, 1, 0x02, 1, 0x01, 2, 0x02, 3, 0x02,
+                0, 0x00, 0, 0x00, 0, 0x10, 0, 0x08, 1, 0x04, 2, 0x04, 3, 0x08,
+                3, 0x04, 0,
+                0x00,   //0x20
+                0, 0x00, 8, 0x02, 7, 0x01, 1, 0x08, 2, 0x10, 2, 0x08, 3, 0x10,
+                0, 0x00, 0, 0x00, 7, 0x04, 7, 0x02, 6, 0x01, 1, 0x10, 5, 0x01,
+                4, 0x01, 0,
+                0x00,   //0x30
+                0, 0x00, 0, 0x00, 7, 0x08, 6, 0x02, 5, 0x02, 4, 0x02, 4, 0x04,
+                0, 0x00, 0, 0x00, 7, 0x10, 6, 0x04, 5, 0x04, 5, 0x08, 4, 0x10,
+                4, 0x08, 0,
+                0x00,   //0x40
+                0, 0x00, 8, 0x01, 0, 0x00, 6, 0x08, 6, 0x10, 5, 0x10, 8, 0x10,
+                0, 0x00, 0, 0x00, 0, 0x00, 8, 0x04, 0, 0x00, 0, 0x00, 0, 0x00,
+                0, 0x00, 0,
+                0x00,   //0x50
+                0, 0x00, 0, 0x00, 8, 0x08, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00,
+                0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00,
+                0, 0x00, 0,
+                0x00,   //0x60
+                0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00,
+                0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00,
+                0, 0x00, 0,
+                0x00,   //0x70
+                0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00, 0, 0x00,
+                0, 0x00, };
 
 // general global variables
 //extern uint8_t RAM[];            // any reads or writes to ports or vectors are trapped in SW
@@ -371,10 +386,10 @@ void exec6522(uint16_t cycles) {
         timer1_count = 0;
         //         } else {                 // Continuous
         timer1_control = via_reg[6] + (via_reg[7] << 8);
-        if(timer1_control>cycles) {
-        timer1_count = timer1_control - timer1_count - cycles;
+        if (timer1_control > cycles) {
+            timer1_count = timer1_control - timer1_count - cycles;
         } else {
-            timer1_count=0;
+            timer1_count = 0;
         }
         //         }
 
@@ -406,7 +421,6 @@ void exec6522(uint16_t cycles) {
     via_reg[4] = timer1_count & 0xff;
     via_reg[5] = (timer1_count >> 8) & 0xff;
 
-
     // Run timer2
 
     if ((via_reg[0xb] & 0xc0) == 0) {
@@ -416,17 +430,16 @@ void exec6522(uint16_t cycles) {
         timer2_count = via_reg[8] + (via_reg[9] << 8);
 
         if (timer2_count > cycles) {
-            timer2_count-=cycles;
+            timer2_count -= cycles;
         } else {
-            timer2_count=0;
-                via_reg[0xd] |= 0x20;     // set T2IL
+            timer2_count = 0;
+            via_reg[0xd] |= 0x20;     // set T2IL
         }
         via_reg[8] = timer2_count & 0xff;
         via_reg[9] = (timer2_count >> 8) & 0xff;
     }
 
     // CMT input
-
 
 }
 
@@ -467,21 +480,21 @@ void cpu_writemem16(unsigned short addr, unsigned char bdat) { // RAM access is 
             via_reg[0xd] &= 0xdf; // clear T2IL
             break;
         case 0xa:    // CMT output to USART
- //           printf("%x",bdat);
-            if((SysTick->CNT-last_usart_tx_systick)> SystemCoreClock/100) {
-                cmt_buff=0;
-                cmt_bit=0;
+            if ((SysTick->CNT - last_usart_tx_systick)
+                    > SystemCoreClock / 100) {
+                cmt_buff = 0;
+                cmt_bit = 0;
             }
-            last_usart_tx_systick=SysTick->CNT;
-            cmt_buff<<=1;
-            if(bdat==0xaa) {
+            last_usart_tx_systick = SysTick->CNT;
+            cmt_buff <<= 1;
+            if (bdat == 0xaa) {
                 cmt_buff++;
             }
             cmt_bit++;
-            if(cmt_bit==8) {
-                printf("%02x",cmt_buff);
-                cmt_bit=0;
-                cmt_buff=0;
+            if (cmt_bit == 8) {
+                printf("%02x", cmt_buff);
+                cmt_bit = 0;
+                cmt_buff = 0;
             }
 
             via_reg[0xd] |= 0x84; // set SR flag
@@ -618,17 +631,17 @@ static inline uint8_t usart_getch() {
 
     currptr = DMA_GetCurrDataCounter(DMA1_Channel6);
 
-    if(currptr==lastptr) {
+    if (currptr == lastptr) {
         return 0;
     }
 
     /*
-    while(1) {
-        currptr=DMA_GetCurrDataCounter(DMA1_Channel6);
-        if(currptr!=lastptr) break;
+     while(1) {
+     currptr=DMA_GetCurrDataCounter(DMA1_Channel6);
+     if(currptr!=lastptr) break;
 
-    }
-    */
+     }
+     */
 
     ch = rxbuff[rxptr];
     lastptr--;
@@ -644,7 +657,6 @@ static inline uint8_t usart_getch() {
 
 }
 
-
 void USART_Getkey() {
 
     static uint8_t ch, pressed;
@@ -655,14 +667,14 @@ void USART_Getkey() {
             keymatrix[i] = 0xff;
         }
 
-        ch=toupper(usart_getch());
+        ch = toupper(usart_getch());
 
-        if(ch!=0) {
+        if (ch != 0) {
 
-            if (ch == '|') { // load test game to memory
-                memcpy(RAM + 0x1000, jr100guldus, 0x1600);
-            }
-            //   toupper(ch);
+//            if (ch == '|') { // load test game to memory
+//                memcpy(RAM + 0x1000, jr100guldus, 0x1600);
+//            }
+
             if (keymap[ch * 3] < 9) {
                 if (keymap[ch * 3 + 2] == 1) { // use modifier (Shift)
                     keymatrix[0] &= ~(2);
@@ -777,44 +789,158 @@ void TIM1_CC_IRQHandler(void) {
 
 }
 
+void cmt_load() {
+    uint8_t ch, cmt_bit;
+    uint8_t cmt_stage;
+    uint16_t bit_count, cmt_ch;
+    uint8_t cmt_param[17];
+    uint16_t byte_count,byte_ptr;
+
+    // flush rx buffer;
+
+    while(usart_getch()!=0);
+
+    ch = 0;
+    cmt_stage = 0;
+    cmt_ch = 0;
+    bit_count = 0;
+
+    while(1) {   // extract bit
+        ch=toupper(usart_getch());
+        if(ch!=0) {
+//            printf("%x ",ch);
+
+            if(ch=='!') { return; }
+
+            ch-='0';
+            if(ch>10) ch-=7;
+
+  //          if(cmt_stage>=3) printf("%x %d \n\r",ch,bit_count);
+
+            for(int i=0;i<4;i++) {
+                cmt_bit=(ch>>(3-i))&1;
+
+                switch(cmt_stage) {
+                    case 0:            // Preample 4081 bits
+                    bit_count++;
+                    if(bit_count==4081) {
+                        bit_count=0;
+                        cmt_stage=1;
+                    }
+                    break;
+                    case 1:                // Filename
+                    cmt_ch>>=1;
+                    cmt_ch+= (cmt_bit==1)?0x400:0;
+                    bit_count++;
+                    if(bit_count%11==0) {
+                        cmt_ch>>=1;
+                        cmt_ch&=0xff;
+                        printf("%c",cmt_ch);
+                        cmt_ch=0;
+                    }
+                    if(bit_count==(11*16)) {
+                        bit_count=0;
+                        cmt_stage=2;
+                        printf("\n\r");
+                    }
+                    break;
+                    case 2:                // Parameters
+                    cmt_ch>>=1;
+                    cmt_ch+= (cmt_bit==1)?0x400:0;
+                    bit_count++;
+                    if(bit_count%11==0) {
+                        cmt_ch>>=1;
+                        cmt_ch&=0xff;
+                        cmt_param[bit_count/11-1]=cmt_ch;
+ //                       printf("%x ",cmt_ch);
+                        cmt_ch=0;
+                    }
+                    if(bit_count==(11*17)) {
+                        bit_count=0;
+                        cmt_stage=3;
+                        byte_ptr=cmt_param[0]*256+cmt_param[1];
+                        byte_count=cmt_param[2]*256+cmt_param[3];
+                        printf("Start addr %x / Total bytes %x\n\r",byte_ptr,byte_count);
+                    }
+                    break;
+                    case 3:            // interim 255 bits
+                    bit_count++;
+                    if(bit_count==255) {
+                        bit_count=0;
+                        cmt_stage=4;
+                    }
+                    break;
+                    case 4:                // Data
+                    cmt_ch>>=1;
+                    cmt_ch+= (cmt_bit==1)?0x400:0;
+                    bit_count++;
+                    if(bit_count%11==0) {
+                        cmt_ch>>=1;
+                        cmt_ch&=0xff;
+                        cpu_writemem16(byte_ptr++, cmt_ch);
+ //                       printf("%x ",cmt_ch);
+                        cmt_ch=0;
+                    }
+                    if(bit_count==(11*byte_count)) {
+                           if(cmt_param[4]==0) {  // set basic tail pointer
+                               byte_ptr--;
+                               cpu_writemem16(0x6, (byte_ptr>>8)&0xff);
+                               cpu_writemem16(0x7, byte_ptr&0xff);
+                           }
+                           printf("Load end.\n\r");
+                           return;
+                    }
+                    break;
+                    default:
+                    break;
+
+                }
+            }
+        }
+    }
+}
+
 #ifdef USE_PS2_KEYBOARD
 
 void ps2_getkey() {
-    uint8_t ps2_keycode,col,row;
-    static uint8_t ps2_extra=0;
-    static uint8_t ps2_depressed=0;
+    uint8_t ps2_keycode, col, row;
+    static uint8_t ps2_extra = 0;
+    static uint8_t ps2_depressed = 0;
 
-    ps2_keycode=get_scan_code();
+    ps2_keycode = get_scan_code();
 
- // if(ps2_keycode!=0) printf("%x ",ps2_keycode);
+    // if(ps2_keycode!=0) printf("%x ",ps2_keycode);
 
-    if(ps2_keycode==0xe0) {
-        ps2_extra=1;
-    } else if (ps2_keycode==0xf0) {
-        ps2_depressed=1;
-    } else if (ps2_keycode!=0 ){
-        if(ps2_extra==0) {        // skip extra modifier keys (eg. Right Shift)
-            col=ps2_keymap[ps2_keycode*2];
-            row=ps2_keymap[ps2_keycode*2+1];
-            if(row!=0) {
-                if(ps2_depressed==0) {
+    if (ps2_keycode == 0xe0) {
+        ps2_extra = 1;
+    } else if (ps2_keycode == 0xf0) {
+        ps2_depressed = 1;
+    } else if (ps2_keycode != 0) {
+        if (ps2_extra == 0) {      // skip extra modifier keys (eg. Right Shift)
+            col = ps2_keymap[ps2_keycode * 2];
+            row = ps2_keymap[ps2_keycode * 2 + 1];
+            if (row != 0) {
+                if (ps2_depressed == 0) {
                     keymatrix[col] &= ~row;
                 } else {
                     keymatrix[col] |= row;
                 }
-            } else if(ps2_keycode==0x11) {
+            } else if (ps2_keycode == 0x11) {
                 // ALT: reset keymatrix
-                for(int i=0;i<9;i++) {
-                    keymatrix[i]=0xff;
+                for (int i = 0; i < 9; i++) {
+                    keymatrix[i] = 0xff;
                 }
-            } else if((ps2_keycode==0x07)&&(ps2_depressed==0)) {
+            } else if ((ps2_keycode == 0x05) && (ps2_depressed == 0)) {
+                // F1: CMT LOAD
+                cmt_load();
+            } else if ((ps2_keycode == 0x07) && (ps2_depressed == 0)) {
                 // F12: load test game to memory
-                memcpy(RAM + 0x1000, jr100guldus, 0x1600);
+//                memcpy(RAM + 0x1000, jr100guldus, 0x1600);
             }
 
         }
-        ps2_depressed=0;
-        ps2_extra=0;
+        ps2_depressed = 0;
+        ps2_extra = 0;
     }
 
 }
@@ -833,8 +959,7 @@ int main(void) {
     // run Systick timer
 
     SysTick->CNT = 0;
-    SysTick->CTLR |=(1 << 0);
-
+    SysTick->CTLR |= (1 << 0);
 
 //  Peripheral setup
 
@@ -859,10 +984,10 @@ int main(void) {
 //  Emulator setup
 
     RAM = malloc(MEM_SIZE);
-    memset(RAM, 0, MEM_SIZE);   // zeroes execute as NOP (as do all undefined instructions)
+    memset(RAM, 0, MEM_SIZE); // zeroes execute as NOP (as do all undefined instructions)
 
-    for(int i=0;i<9;i++) {
-        keymatrix[i]=0xff;
+    for (int i = 0; i < 9; i++) {
+        keymatrix[i] = 0xff;
     }
 
     memset(rxbuff, 0, RX_BUFFER_LEN);
@@ -870,7 +995,7 @@ int main(void) {
     m6800_init();
     m6800_reset();
 
- //   Delay_Init();
+    //   Delay_Init();
 //
 //     for (int xx = 0; xx < NTSC_X_CHARS; xx++) {
 //     cpu_writemem16(xx, 0xaa);
