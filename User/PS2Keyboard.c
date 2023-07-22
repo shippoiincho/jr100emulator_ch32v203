@@ -77,6 +77,12 @@ void EXTI9_5_IRQHandler(void)
 
     if (EXTI_GetITStatus(EXTI_Line8) != RESET) {
 
+        val=GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_8);
+        if(val!=0) {
+            EXTI_ClearITPendingBit(EXTI_Line8); /* Clear Flag */
+            return;
+        }
+
         //  val = digitalRead(DataPin);
         val=GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_9);
         //  now_ms = millis();
